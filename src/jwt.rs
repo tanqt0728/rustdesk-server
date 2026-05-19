@@ -13,7 +13,6 @@ pub struct Claims {
 }
 
 pub fn generate_token(user_id: u32, exp: i64) -> Result<String, String> {
-    println!("secret: {:}", SECRET.to_string());
     let claims = Claims {
         user_id,
         exp: (chrono::Utc::now() + chrono::Duration::seconds(exp)).timestamp() as usize,
@@ -32,11 +31,12 @@ pub fn generate_token(user_id: u32, exp: i64) -> Result<String, String> {
 }
 // 验证 JWT 的函数
 pub fn verify_token(token: &str) -> Result<Claims, String> {
+    let token = normalize_token(token);
     // 解码 JWT
     let validation = Validation::new(Algorithm::HS256);
 
     let decoded = decode::<Claims>(
-        &token,
+        token,
         &DecodingKey::from_secret(SECRET.as_ref()),
         &validation,
     );
@@ -50,5 +50,14 @@ pub fn verify_token(token: &str) -> Result<Claims, String> {
             }
         }
         Err(_) => Err("Invalid token".to_string()),
+    }
+}
+
+fn normalize_token(token: &str) -> &str {
+    let token = token.trim();
+    if token.len() >= 7 && token[..7].eq_ignore_ascii_case("Bearer ") {
+        token[7..].trim()
+    } else {
+        token
     }
 }

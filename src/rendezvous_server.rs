@@ -900,7 +900,22 @@ impl RendezvousServer {
         }
         // if secret is not empty check token by jwt
         if MUST_LOGIN.load(Ordering::SeqCst) {
+            log::info!(
+                "API auth punch request from {} to {}, version='{}', conn_type={:?}, ws={}, force_relay={}, token_len={}",
+                addr,
+                ph.id,
+                ph.version,
+                ph.conn_type,
+                ws,
+                ph.force_relay,
+                ph.token.trim().len()
+            );
             if ph.token.is_empty() {
+                log::warn!(
+                    "API auth rejected punch request from {} to {}: empty token",
+                    addr,
+                    ph.id
+                );
                 let mut msg_out = RendezvousMessage::new();
                 msg_out.set_punch_hole_response(PunchHoleResponse {
                     other_failure: String::from("Connection failed, please login!"),
@@ -911,6 +926,12 @@ impl RendezvousServer {
                 let token = ph.token;
                 let token = jwt::verify_token(token.as_str());
                 if token.is_err() {
+                    log::warn!(
+                        "API auth rejected punch request from {} to {}: invalid token ({})",
+                        addr,
+                        ph.id,
+                        token.err().unwrap_or_else(|| "unknown".to_string())
+                    );
                     let mut msg_out = RendezvousMessage::new();
                     msg_out.set_punch_hole_response(PunchHoleResponse {
                         //提示重新登录
@@ -918,6 +939,12 @@ impl RendezvousServer {
                         ..Default::default()
                     });
                     return Ok((msg_out, None));
+                } else {
+                    log::info!(
+                        "API auth accepted punch request from {} to {}",
+                        addr,
+                        ph.id
+                    );
                 }
             }
         }

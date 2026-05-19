@@ -1,0 +1,55 @@
+FROM rust:1-bookworm AS builder
+
+WORKDIR /src
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    git \
+    libsqlite3-dev \
+    libsodium-dev \
+    pkg-config \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY . .
+RUN cargo build --release --bins
+
+FROM debian:bookworm-slim
+
+ARG S6_OVERLAY_VERSION=3.2.0.0
+ARG S6_ARCH=x86_64
+
+ADD https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz /tmp/
+ADD https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz /tmp/
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates curl libsqlite3-0 libsodium23 xz-utils \
+  && tar -C / -Jxpf /tmp/s6-overlay-noarch.tar.xz \
+  && tar -C / -Jxpf /tmp/s6-overlay-${S6_ARCH}.tar.xz \
+  && rm -rf /var/lib/apt/lists/* /tmp/s6-overlay*.tar.xz \
+  && ln -s /run /var/run
+
+COPY --from=builder /src/target/release/hbbs /usr/bin/hbbs
+COPY --from=builder /src/target/release/hbbr /usr/bin/hbbr
+COPY --from=builder /src/target/release/rustdesk-utils /usr/bin/rustdesk-utils
+COPY docker/rootfs /
+RUN find /etc/s6-overlay/s6-rc.d -type f -exec sed -i 's/\r$//' {} + \
+  && sed -i 's/\r$//' /usr/bin/healthcheck.sh \
+  && rm -rf /etc/s6-overlay/s6-rc.d/api \
+  && rm -f /etc/s6-overlay/s6-rc.d/user/contents.d/api \
+  && chmod +x /usr/bin/healthcheck.sh \
+  && find /etc/s6-overlay/s6-rc.d -type f \( -name run -o -name up -o -name up.real \) -exec chmod +x {} +
+
+ENV RELAY=relay.example.com
+ENV ENCRYPTED_ONLY=0
+ENV MUST_LOGIN=N
+
+EXPOSE 21115 21116 21116/udp 21117 21118 21119
+
+HEALTHCHECK --interval=10s --timeout=5s CMD /usr/bin/healthcheck.sh
+
+WORKDIR /app
+VOLUME /app/data
+VOLUME /data
+
+ENTRYPOINT ["/init"]
