@@ -9,10 +9,12 @@ RUN apt-get update \
     libsqlite3-dev \
     libsodium-dev \
     pkg-config \
+    sqlite3 \
   && rm -rf /var/lib/apt/lists/*
 
 COPY . .
-RUN cargo build --release --bins
+RUN sqlite3 /tmp/sqlx-check.db "create table peer (guid blob primary key not null, id varchar(100) not null, uuid blob not null, pk blob not null, created_at datetime not null default(current_timestamp), user blob, status tinyint, note varchar(300), info text not null) without rowid; create unique index index_peer_id on peer (id); create index index_peer_user on peer (user); create index index_peer_created_at on peer (created_at); create index index_peer_status on peer (status);" \
+  && DATABASE_URL=sqlite:///tmp/sqlx-check.db cargo build --release --bins
 
 FROM debian:bookworm-slim
 
