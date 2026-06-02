@@ -18,14 +18,24 @@ RUN sqlite3 /tmp/sqlx-check.db "create table peer (guid blob primary key not nul
 
 FROM debian:bookworm-slim
 
+ARG TARGETARCH
 ARG S6_OVERLAY_VERSION=3.2.0.0
-ARG S6_ARCH=x86_64
+ARG S6_ARCH
 
 ADD https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz /tmp/
-ADD https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz /tmp/
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl libsqlite3-0 libsodium23 xz-utils \
+  && if [ -z "$S6_ARCH" ]; then \
+    arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
+    case "$arch" in \
+      amd64) S6_ARCH=x86_64 ;; \
+      arm64) S6_ARCH=aarch64 ;; \
+      *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; \
+    esac; \
+  fi \
+  && curl -fsSL -o /tmp/s6-overlay-${S6_ARCH}.tar.xz \
+    https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz \
   && tar -C / -Jxpf /tmp/s6-overlay-noarch.tar.xz \
   && tar -C / -Jxpf /tmp/s6-overlay-${S6_ARCH}.tar.xz \
   && rm -rf /var/lib/apt/lists/* /tmp/s6-overlay*.tar.xz \
